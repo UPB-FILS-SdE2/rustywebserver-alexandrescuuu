@@ -118,7 +118,7 @@ async fn handle_request(mut stream: TcpStream, root_dir: PathBuf) {
                             content_type, content_length, body
                         )
                     } else {
-                        println!("{} 127.0.0.1 {}-> 500 (Interval Server Error",method, path);
+                        println!("{} 127.0.0.1 {}-> 500 (Interval Server Error)",method, path);
                         "HTTP/1.1 500 Internal Server Error\r\nConnection: close\r\n\r\n<html>500 Internal Server Error</html>".to_string()
                     }
                 } else {
