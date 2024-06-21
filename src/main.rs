@@ -103,7 +103,7 @@ async fn handle_request(mut stream: TcpStream, root_dir: PathBuf) {
                         let output_str = String::from_utf8_lossy(&output.stdout);
                         let (headers, body_start_index) = parse_headers(&output_str);
                         let body = output_str.lines().skip(body_start_index).collect::<Vec<_>>().join("\n");
-                        println!("{}",body);
+                        // println!("{}",body);
                         let content_type = headers.iter().find(|&&(ref k, _)| k == "Content-type")
                             .map(|&(_, ref v)| v.clone())
                             .unwrap_or_else(|| "text/plain".to_string());
@@ -180,7 +180,16 @@ fn parse_request(request: &str) -> (String, String, Option<String>) {
 
 fn get_request_body(request: &str) -> String {
     if let Some(index) = request.find("\r\n\r\n") {
-        request[index + 4..].to_string()
+        let content_length = request.lines().find(|line| line.starts_with("Content-Length:"))
+            .and_then(|line| line.split(':').nth(1))
+            .and_then(|value| value.trim().parse::<usize>().ok())
+            .unwrap_or(0);
+
+        if content_length > 0 {
+            request[index + 4..index + 4 + content_length].to_string()
+        } else {
+            "".to_string()
+        }
     } else {
         "".to_string()
     }
