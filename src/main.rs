@@ -118,7 +118,7 @@ async fn handle_request(mut stream: TcpStream, root_dir: PathBuf) {
                             content_type, content_length, body
                         )
                     } else {
-                        println!("{} 127.0.0.1 {}-> 500 (Interval Server Error)",method, path);
+                        println!("{} 127.0.0.1 {} -> 500 (Interval Server Error)",method, path);
                         "HTTP/1.1 500 Internal Server Error\r\nConnection: close\r\n\r\n<html>500 Internal Server Error</html>".to_string()
                     }
                 } else {
@@ -127,7 +127,7 @@ async fn handle_request(mut stream: TcpStream, root_dir: PathBuf) {
                 }
             }
             _ => {
-                println!("{} 127.0.0.1 {}-> 405 (Method Not Allowed)",method, path);
+                println!("{} 127.0.0.1 {} -> 405 (Method Not Allowed)",method, path);
                 "HTTP/1.1 405 Method Not Allowed\r\nConnection: close\r\n\r\n<html>405 Method Not Allowed</html>".to_string()
             }
         }
@@ -180,16 +180,7 @@ fn parse_request(request: &str) -> (String, String, Option<String>) {
 
 fn get_request_body(request: &str) -> String {
     if let Some(index) = request.find("\r\n\r\n") {
-        let content_length = request.lines().find(|line| line.starts_with("Content-Length:"))
-            .and_then(|line| line.split(':').nth(1))
-            .and_then(|value| value.trim().parse::<usize>().ok())
-            .unwrap_or(0);
-
-        if content_length > 0 {
-            request[index + 4..index + 4 + content_length].to_string()
-        } else {
-            "".to_string()
-        }
+        request[index + 4..].to_string()
     } else {
         "".to_string()
     }
