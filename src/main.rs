@@ -38,7 +38,6 @@ fn parse_headers(output: &str) -> (Vec<(String, String)>, usize) {
 
     (headers, body_start_index)
 }
-
 async fn handle_request(mut stream: TcpStream, root_dir: PathBuf) {
     let mut buffer = [0; 1024];
     stream.read(&mut buffer).unwrap();
@@ -49,9 +48,7 @@ async fn handle_request(mut stream: TcpStream, root_dir: PathBuf) {
     let response = 
     if path.starts_with("/..") || path.starts_with("/forbidden") {
         println!("{} 127.0.0.1 {} -> 403 (Forbidden)", method, path);
-        format!(
-            "HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n<html>403 Forbidden</html>"
-        )   
+        b"HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n<html>403 Forbidden</html>".to_vec()
     } else if path.starts_with("/scripts/") {
         match method.as_str() {
             "GET" | "POST" => {
@@ -103,7 +100,6 @@ async fn handle_request(mut stream: TcpStream, root_dir: PathBuf) {
                         let output_str = String::from_utf8_lossy(&output.stdout);
                         let (headers, body_start_index) = parse_headers(&output_str);
                         let body = output_str.lines().skip(body_start_index).collect::<Vec<_>>().join("\n");
-                        // println!("{}",body);
                         let content_type = headers.iter().find(|&&(ref k, _)| k == "Content-type")
                             .map(|&(_, ref v)| v.clone())
                             .unwrap_or_else(|| "text/plain".to_string());
@@ -116,19 +112,19 @@ async fn handle_request(mut stream: TcpStream, root_dir: PathBuf) {
                         format!(
                             "HTTP/1.1 200 OK\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
                             content_type, content_length, body
-                        )
+                        ).as_bytes().to_vec()
                     } else {
                         println!("{} 127.0.0.1 {} -> 500 (Internal Server Error)",method, path);
-                        "HTTP/1.1 500 Internal Server Error\r\nConnection: close\r\n\r\n<html>500 Internal Server Error</html>".to_string()
+                        b"HTTP/1.1 500 Internal Server Error\r\nConnection: close\r\n\r\n<html>500 Internal Server Error</html>".to_vec()
                     }
                 } else {
                     println!("{} 127.0.0.1 {} -> 404 (Not Found)",method, path);
-                    "HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n<html>404 Not Found</html>".to_string()
+                    b"HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n<html>404 Not Found</html>".to_vec()
                 }
             }
             _ => {
                 println!("{} 127.0.0.1 {} -> 405 (Method Not Allowed)",method, path);
-                "HTTP/1.1 405 Method Not Allowed\r\nConnection: close\r\n\r\n<html>405 Method Not Allowed</html>".to_string()
+                b"HTTP/1.1 405 Method Not Allowed\r\nConnection: close\r\n\r\n<html>405 Method Not Allowed</html>".to_vec()
             }
         }
     } else {
@@ -137,28 +133,30 @@ async fn handle_request(mut stream: TcpStream, root_dir: PathBuf) {
                 if full_path.is_file() {
                     let contents = fs::read(&full_path).expect("Unable to read file");
                     let mime_type = get_mime_type(&full_path);
-                    println!("{} 127.0.0.1 {} -> 200 (OK)",method, path.as_str());
-                    format!(
-                        "HTTP/1.1 200 OK\r\nContent-Type: {}\r\nConnection: close\r\n\r\n{}",
+
+                    println!("{} 127.0.0.1 {} -> 200 (OK)", method, path);
+                    let mut response = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
                         mime_type,
-                        String::from_utf8_lossy(&contents)
-                    )
+                        contents.len(),
+                    ).as_bytes().to_vec();
+                    response.extend_from_slice(&contents);
+                    response
                 } else {
                     println!("{} 127.0.0.1 {} -> 404 (Not Found)",method, path);
-                    "HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n<html>404 Not Found</html>".to_string()
+                    b"HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n<html>404 Not Found</html>".to_vec()
                 }
             }
             _ => {
                 println!("{} 127.0.0.1 {} -> 405 (Method Not Allowed)",method, path);
-                "HTTP/1.1 405 Method Not Allowed\r\nConnection: close\r\n\r\n<html>405 Method Not Allowed</html>".to_string()
+                b"HTTP/1.1 405 Method Not Allowed\r\nConnection: close\r\n\r\n<html>405 Method Not Allowed</html>".to_vec()
             }
         }
     };
 
-    stream.write_all(response.as_bytes()).unwrap();
+    stream.write_all(&response).unwrap();
     stream.flush().unwrap();
 }
-
 fn parse_request(request: &str) -> (String, String, Option<String>) {
     let lines: Vec<&str> = request.lines().collect();
     if lines.is_empty() {
@@ -186,33 +184,33 @@ fn get_request_body(request: &str) -> String {
     }
 }
 
-#[tokio::main]
-async fn main() {
-    let args: Vec<String> = env::args().collect();
-    if args.len() != 3 {
-        eprintln!("Usage: {} <port> <root_folder>", args[0]);
-        return;
-    }
+    #[tokio::main]
+    async fn main() {
+        let args: Vec<String> = env::args().collect();
+        if args.len() != 3 {
+            eprintln!("Usage: {} <port> <root_folder>", args[0]);
+            return;
+        }
 
-    let port: u16 = args[1].parse().expect("Invalid port number");
-    let root_dir = PathBuf::from(&args[2]);
+        let port: u16 = args[1].parse().expect("Invalid port number");
+        let root_dir = PathBuf::from(&args[2]);
 
-    let listener = TcpListener::bind(("0.0.0.0", port)).expect("Failed to bind to address");
+        let listener = TcpListener::bind(("0.0.0.0", port)).expect("Failed to bind to address");
 
-    println!("Root folder: {:?}", root_dir.canonicalize().unwrap());
-    println!("Server listening on 0.0.0.0:{}", port);
+        println!("Root folder: {:?}", root_dir.canonicalize().unwrap());
+        println!("Server listening on 0.0.0.0:{}", port);
 
-    for stream in listener.incoming() {
-        match stream {
-            Ok(stream) => {
-                let root_dir = root_dir.clone();
-                tokio::spawn(async move {
-                    handle_request(stream, root_dir).await;
-                });
-            }
-            Err(e) => {
-                eprintln!("Connection failed: {}", e);
+        for stream in listener.incoming() {
+            match stream {
+                Ok(stream) => {
+                    let root_dir = root_dir.clone();
+                    tokio::spawn(async move {
+                        handle_request(stream, root_dir).await;
+                    });
+                }
+                Err(e) => {
+                    eprintln!("Connection failed: {}", e);
+                }
             }
         }
     }
-}
